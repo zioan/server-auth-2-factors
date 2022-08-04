@@ -92,44 +92,51 @@ router.post('/register', (req, res) => {
 
 // get secret
 router.post('/secret', (req, res) => {
-  let userSecretInput = req.body.secret;
+  const currentUser = `SELECT * FROM users WHERE email = "${req.body.email}"`;
 
-  const userSecret = db.query(`SELECT * FROM users WHERE id = 1`);
-
-  if (userSecret.secret !== userSecretInput) return;
-
-  const token = jwt.sign(
-    {
-      id: result[0].id,
-      email: result[0].email,
-      secret2: userSecret.secret,
-      secret: authCode,
-    },
-    process.env.SECRET,
-    {
-      expiresIn: '1d', //one day is "1d" /"1w"...
+  const findUser = db.query(currentUser, (error, result) => {
+    if (error) {
+      return res.send('No user found for this email address!');
     }
-  );
+    if (result.length > 0) {
+      if (req.body.userSecret === result[0].secret) {
+        const token = jwt.sign(
+          {
+            id: result[0].id,
+            email: result[0].email,
+            secret: result[0].secret,
+          },
+          process.env.SECRET,
+          {
+            expiresIn: '1d', //one day is "1d" /"1w"...
+          }
+        );
 
-  res
-    .cookie('token', token, {
-      httpOnly: true,
-      sameSite:
-        process.env.NODE_ENV === 'development'
-          ? 'lax'
-          : process.env.NODE_ENV === 'production' && 'none',
-      secure:
-        process.env.NODE_ENV === 'development'
-          ? false
-          : process.env.NODE_ENV === 'production' && true,
-    })
-    .status(200)
-    .send({
-      id: result[0].id,
-      email: result[0].email,
-      // secret: generateString(5),
-      token: token,
-    });
+        res
+          .cookie('token', token, {
+            httpOnly: true,
+            sameSite:
+              process.env.NODE_ENV === 'development'
+                ? 'lax'
+                : process.env.NODE_ENV === 'production' && 'none',
+            secure:
+              process.env.NODE_ENV === 'development'
+                ? false
+                : process.env.NODE_ENV === 'production' && true,
+          })
+          .status(200)
+          .send({
+            id: result[0].id,
+            email: result[0].email,
+            token: token,
+          });
+      } else {
+        res.status(400).send('Secret is wrong');
+      }
+    } else {
+      return res.status(400).send('User not found');
+    }
+  });
 });
 
 //login
@@ -140,7 +147,7 @@ router.post('/login', (req, res) => {
   const characters = '0123456789';
 
   function generateString(length) {
-    let result = ' ';
+    let result = '';
     const charactersLength = characters.length;
     for (let i = 0; i < length; i++) {
       result += characters.charAt(Math.floor(Math.random() * charactersLength));
@@ -148,8 +155,6 @@ router.post('/login', (req, res) => {
 
     return result;
   }
-
-  // console.log(generateString(5));
 
   const findUser = db.query(currentUser, (error, result) => {
     if (error) {
@@ -159,57 +164,9 @@ router.post('/login', (req, res) => {
       if (bcrypt.compareSync(req.body.password, result[0].passwordHash)) {
         const authCode = generateString(5);
 
-        // push authCode to user table
-        // const sql1 = `UPDATE users SET secret = '${authCode}' WHERE id = ${currentUser.id}`;
-        // db.query(sql1, (error) => {
-        //   if (error) {
-        //     return res.json({ message: error });
-        //   }
-        // });
-
-        db.query(`UPDATE users SET secret = '${authCode}' WHERE id = 1`);
-
-        //
-        // Here 'secret' aka authCode must be send to the user
-        //
-
-        // read and compare 'secret' from db with request user input
-        // const userSecret = db.query(`SELECT * FROM users WHERE id = 1`);
-
-        // // if (userSecret !== await userSecretInput) return;
-
-        // const token = jwt.sign(
-        //   {
-        //     id: result[0].id,
-        //     email: result[0].email,
-        //     secret2: userSecret.secret,
-        //     secret: authCode,
-        //   },
-        //   process.env.SECRET,
-        //   {
-        //     expiresIn: '1d', //one day is "1d" /"1w"...
-        //   }
-        // );
-
-        // res
-        //   .cookie('token', token, {
-        //     httpOnly: true,
-        //     sameSite:
-        //       process.env.NODE_ENV === 'development'
-        //         ? 'lax'
-        //         : process.env.NODE_ENV === 'production' && 'none',
-        //     secure:
-        //       process.env.NODE_ENV === 'development'
-        //         ? false
-        //         : process.env.NODE_ENV === 'production' && true,
-        //   })
-        //   .status(200)
-        //   .send({
-        //     id: result[0].id,
-        //     email: result[0].email,
-        //     // secret: generateString(5),
-        //     token: token,
-        //   });
+        db.query(
+          `UPDATE users SET secret = '${authCode}'WHERE email = "${req.body.email}"`
+        );
       } else {
         res.status(400).send('Password is wrong');
       }
@@ -218,52 +175,6 @@ router.post('/login', (req, res) => {
     }
   });
 });
-
-// router.post('/login', (req, res) => {
-//   const findQuery = `SELECT * FROM users WHERE email = "${req.body.email}"`;
-
-//   const findUser = db.query(findQuery, (error, result) => {
-//     if (error) {
-//       return res.send('No user found for this email address!');
-//     }
-//     if (result.length > 0) {
-//       if (bcrypt.compareSync(req.body.password, result[0].passwordHash)) {
-//         const token = jwt.sign(
-//           {
-//             id: result[0].id,
-//             email: result[0].email,
-//           },
-//           process.env.SECRET,
-//           {
-//             expiresIn: '1d', //one day is "1d" /"1w"...
-//           }
-//         );
-//         res
-//           .cookie('token', token, {
-//             httpOnly: true,
-//             sameSite:
-//               process.env.NODE_ENV === 'development'
-//                 ? 'lax'
-//                 : process.env.NODE_ENV === 'production' && 'none',
-//             secure:
-//               process.env.NODE_ENV === 'development'
-//                 ? false
-//                 : process.env.NODE_ENV === 'production' && true,
-//           })
-//           .status(200)
-//           .send({
-//             id: result[0].id,
-//             email: result[0].email,
-//             token: token,
-//           });
-//       } else {
-//         res.status(400).send('Password is wrong');
-//       }
-//     } else {
-//       return res.status(400).send('User not found');
-//     }
-//   });
-// });
 
 // update user email
 router.put('/update/email/:id', (req, res) => {
