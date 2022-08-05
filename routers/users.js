@@ -100,6 +100,16 @@ router.post('/login', (req, res) => {
           `UPDATE users SET secret = '${authCode}'WHERE email = "${req.body.email}"`
         );
 
+        // delete authCode from database in 1 minute
+        const userEmail = req.body.email;
+        setTimeout(
+          () =>
+            db.query(
+              `UPDATE users SET secret = '' WHERE email = "${userEmail}"`
+            ),
+          60000
+        );
+
         // We need to send authCode here
       } else {
         res.status(400).send('Password is wrong');
