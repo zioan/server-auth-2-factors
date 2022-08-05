@@ -3,7 +3,6 @@ const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const auth = require('../middleware/auth');
 
 //create table if not already
 router.get('/createuserstable', (req, res) => {
@@ -16,18 +15,6 @@ router.get('/createuserstable', (req, res) => {
     } else {
       console.log(result);
       res.send('Users table created');
-    }
-  });
-});
-
-//get user details
-router.get('/find/:id', (req, res) => {
-  const sql = `SELECT * FROM users WHERE id = ${req.params.id}`;
-  db.query(sql, (error, result) => {
-    if (error) {
-      return res.json({ message: error });
-    } else {
-      res.send(result);
     }
   });
 });
@@ -55,42 +42,75 @@ router.post('/register', (req, res) => {
       if (error) {
         console.log(error);
       } else {
-        const token = jwt.sign(
-          {
-            id: result.insertId,
-            email: newUserData.email,
-          },
-          process.env.SECRET,
-          {
-            expiresIn: '1d', //one day is "1d" /"1w"...
+        // Generate random code
+        const characters = '0123456789';
+        // const characters ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+        function generateSecret(length) {
+          let result = '';
+          const charactersLength = characters.length;
+          for (let i = 0; i < length; i++) {
+            result += characters.charAt(
+              Math.floor(Math.random() * charactersLength)
+            );
           }
+
+          return result;
+        }
+
+        const authCode = generateSecret(5);
+
+        db.query(
+          `UPDATE users SET secret = '${authCode}'WHERE email = "${req.body.email}"`
         );
 
-        //set cookie
-        res
-          .cookie('token', token, {
-            httpOnly: true,
-            sameSite:
-              process.env.NODE_ENV === 'development'
-                ? 'lax'
-                : process.env.NODE_ENV === 'production' && 'none',
-            secure:
-              process.env.NODE_ENV === 'development'
-                ? false
-                : process.env.NODE_ENV === 'production' && true,
-          })
-          .status(200)
-          .send({
-            id: result.insertId,
-            email: newUserData.email,
-            token: token,
-          });
+        // We need to send authCode here
       }
     });
   });
 });
 
-// get secret
+//login
+router.post('/login', (req, res) => {
+  const currentUser = `SELECT * FROM users WHERE email = "${req.body.email}"`;
+
+  // Generate random code
+  const characters = '0123456789';
+  // const characters ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+  function generateSecret(length) {
+    let result = '';
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+
+    return result;
+  }
+
+  const findUser = db.query(currentUser, (error, result) => {
+    if (error) {
+      return res.send('No user found for this email address!');
+    }
+    if (result.length > 0) {
+      if (bcrypt.compareSync(req.body.password, result[0].passwordHash)) {
+        const authCode = generateSecret(5);
+
+        db.query(
+          `UPDATE users SET secret = '${authCode}'WHERE email = "${req.body.email}"`
+        );
+
+        // We need to send authCode here
+      } else {
+        res.status(400).send('Password is wrong');
+      }
+    } else {
+      return res.status(400).send('User not found');
+    }
+  });
+});
+
+// validate secret
 router.post('/secret', (req, res) => {
   const currentUser = `SELECT * FROM users WHERE email = "${req.body.email}"`;
 
@@ -104,7 +124,6 @@ router.post('/secret', (req, res) => {
           {
             id: result[0].id,
             email: result[0].email,
-            secret: result[0].secret,
           },
           process.env.SECRET,
           {
@@ -139,39 +158,14 @@ router.post('/secret', (req, res) => {
   });
 });
 
-//login
-router.post('/login', (req, res) => {
-  const currentUser = `SELECT * FROM users WHERE email = "${req.body.email}"`;
-
-  // Generate random code
-  const characters = '0123456789';
-
-  function generateString(length) {
-    let result = '';
-    const charactersLength = characters.length;
-    for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-
-    return result;
-  }
-
-  const findUser = db.query(currentUser, (error, result) => {
+//get user details
+router.get('/find/:id', (req, res) => {
+  const sql = `SELECT * FROM users WHERE id = ${req.params.id}`;
+  db.query(sql, (error, result) => {
     if (error) {
-      return res.send('No user found for this email address!');
-    }
-    if (result.length > 0) {
-      if (bcrypt.compareSync(req.body.password, result[0].passwordHash)) {
-        const authCode = generateString(5);
-
-        db.query(
-          `UPDATE users SET secret = '${authCode}'WHERE email = "${req.body.email}"`
-        );
-      } else {
-        res.status(400).send('Password is wrong');
-      }
+      return res.json({ message: error });
     } else {
-      return res.status(400).send('User not found');
+      res.send(result);
     }
   });
 });
